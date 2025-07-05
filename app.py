@@ -19,7 +19,22 @@ def analyze():
     batches = data["batches"]
     lock_point = data["lockPoint"]
 
-    batch_array = np.array(batches, dtype=float)
+    batch_array = np.array(data["batches"], dtype=float)
+
+    if batch_array.ndim == 0:
+        return jsonify(error="No batch data received or incorrect structure."), 400
+
+    elif batch_array.ndim == 1:
+        batch_array = batch_array.reshape(1, -1)
+
+    elif batch_array.ndim > 2:
+        return jsonify(error="Batch data is too deeply nested. Please check your Excel or input format."), 400
+
+    try:
+        num_batches, num_params = batch_array.shape
+    except ValueError as ve:
+        return jsonify(error=f"Unable to extract batch dimensions: {ve}"), 400
+
     num_params = len(param_names)
     num_batches = len(batch_array)
 
@@ -39,8 +54,11 @@ def analyze():
 
     # Prepare HTML tables
     metrics_html_baseline = ['<h3>SQC Metrics Summary – Baseline Data Control Limits</h3><table><tr><th>Parameter</th><th>Mean</th><th>SD</th><th>%RSD</th><th>LCL</th><th>UCL</th><th>CpK</th></tr>']
-    metrics_html_rolling = ['<h3>SQC Metrics Summary – Rolling Data</h3><table><tr><th>Parameter</th><th>Mean</th><th>SD</th><th>%RSD</th><th>LCL</th><th>UCL</th><th>CpK</th></tr>']
-    
+    metrics_html_rolling = [
+  '<h3>SQC Metrics Summary – Rolling Data</h3>',
+  '<table><tr><th>Parameter</th><th>Mean</th><th>SD</th><th>%RSD</th><th>CpK</th></tr>'
+]
+   
     charts = []
 
     for i in range(num_params):
@@ -51,10 +69,9 @@ def analyze():
         baseline_indexes = in_spec_indexes[:lock_point]
         baseline_values = values[baseline_indexes]
 
-        # Rolling values: all non-NaN and in-spec
-        in_spec_param_mask = (values >= lsl) & (values <= usl) & ~np.isnan(values)
-        rolling_values = values[in_spec_param_mask]
-
+        # ✅ Global in-spec batches only
+        rolling_values = values[in_spec_batch_mask & ~np.isnan(values)]
+        
         def mean_sd(a):
             m = np.mean(a)
             s = np.std(a, ddof=1)
@@ -73,7 +90,7 @@ def analyze():
             rm, rs = mean_sd(rolling_values)
             rlcl, rucl = rm - 3 * rs, rm + 3 * rs
             rcpk = min((usl - rm) / (3 * rs), (rm - lsl) / (3 * rs)) if rs else 0
-            metrics_html_rolling.append(f"<tr><td>{param_names[i]}</td><td>{rm:.2f}</td><td>{rs:.2f}</td><td>{rs/rm*100:.2f}</td><td>{rlcl:.2f}</td><td>{rucl:.2f}</td><td>{rcpk:.2f}</td></tr>")
+            metrics_html_rolling.append(f"<tr><td>{param_names[i]}</td><td>{rm:.2f}</td><td>{rs:.2f}</td><td>{rs/rm*100:.2f}</td><td>{rcpk:.2f}</td></tr>")
         else:
             metrics_html_rolling.append(f"<tr><td>{param_names[i]}</td><td colspan='6'>Insufficient rolling data</td></tr>")
 
