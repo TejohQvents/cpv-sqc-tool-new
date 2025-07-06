@@ -1,8 +1,11 @@
 from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 import numpy as np
 from scipy import stats
 
 app = Flask(__name__)
+CORS(app)  # ✅ This enables CORS for all routes
+
 
 @app.route("/")
 def index():
